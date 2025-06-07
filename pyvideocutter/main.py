@@ -873,15 +873,13 @@ def get_args():
     # Если задан обычный режим редактирования (без консоли):
     else:
         # Скрываем окно консоли под Windows:
-        if len(sys.argv) == 1 and sys.platform == "win32":
+        if sys.platform == "win32":
             kernel32 = ctypes.WinDLL('kernel32')
-            kernel32.FreeConsole()
-            '''
             user32 = ctypes.WinDLL('user32')
             hwnd = kernel32.GetConsoleWindow()
             if hwnd:
                 user32.ShowWindow(hwnd, 0)  # 0 = SW_HIDE
-            '''
+            # kernel32.FreeConsole()
 
         # Используем QtDialogHelper для диалогов:
         source_file = args.source or QtDialogHelper.ask_open_file('Укажите исходный файл')
