@@ -4,8 +4,13 @@ import os
 import copy
 import argparse
 import numpy as np
-import cv2
 import ctypes
+
+# Исправляем пути к плагинам Qt:
+from PyQt5.QtCore import QLibraryInfo
+os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
+    QLibraryInfo.PluginsPath
+)
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout,
@@ -13,6 +18,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtGui import QImage, QPixmap, QKeyEvent, QIcon
 from PyQt5.QtCore import Qt, QTimer
+import cv2  # OpenCV должен импортироваться ПОСЛЕ PyQt5!
 
 # Загружаем иконку приложения в base64 из другого файла:
 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -861,17 +867,18 @@ def get_args():
     )
 
     args = parser.parse_args()
+    mode = 'export' if args.export else 'edit'
+    return args.source, args.preview, args.fragments_dir, mode
 
-    # Если задан режим экспорта (без GUI):
-    if args.export:
-        source_file = args.source
-        if source_file == '':
-            raise ValueError('В режиме экспорта параметр source является обязательным!')
-        preview_file = args.preview or source_file
-        fragments_dir = args.fragments_dir or os.path.dirname(source_file)
 
-    # Если задан обычный режим редактирования (без консоли):
-    else:
+def main():
+
+    # Получаем список параметров:
+    source_file, preview_file, fragments_dir, mode = get_args()
+
+    # В режиме редактирования используем GUI:
+    if mode == 'edit':
+
         # Скрываем окно консоли под Windows:
         if sys.platform == "win32":
             kernel32 = ctypes.WinDLL('kernel32')
@@ -881,32 +888,33 @@ def get_args():
                 user32.ShowWindow(hwnd, 0)  # 0 = SW_HIDE
             # kernel32.FreeConsole()
 
-        # Используем QtDialogHelper для диалогов:
-        source_file = args.source or QtDialogHelper.ask_open_file('Укажите исходный файл')
-        preview_file = args.preview or QtDialogHelper.ask_open_file('Укажите файл-превью') or source_file
-        fragments_dir = args.fragments_dir or QtDialogHelper.ask_dir('Укажите папку для фрагментов') or os.path.dirname(
+        app = QApplication(sys.argv)
+
+        # Доуточняем параметры:
+        source_file = source_file or QtDialogHelper.ask_open_file('Укажите исходный файл')
+        if source_file == '':
+            QtDialogHelper.errorbox('Требуется исходное видео!', 'Ошибка')
+            sys.exit(1)
+        preview_file = preview_file or QtDialogHelper.ask_open_file('Укажите файл-превью') or source_file
+        fragments_dir = fragments_dir or QtDialogHelper.ask_dir('Укажите папку для фрагментов') or os.path.dirname(
             source_file)
 
-    return source_file, preview_file, fragments_dir, 'export' if args.export else 'edit'
-
-
-def main():
-    app = QApplication(sys.argv)
-
-    # Получаем список параметров:
-    source_file, preview_file, fragments_dir, mode = get_args()
-    if source_file == '':
-        QtDialogHelper.errorbox('Требуется исходное видео!', 'Ошибка')
-        sys.exit(1)
-
-    # В режиме редактирования запускаем интерфейс:
-    if mode == 'edit':
+        # Запускаем интерфейс:
         window = MainWindow(source_file, preview_file, fragments_dir)
         window.show()
         sys.exit(app.exec_())
 
-    # В режиме экспорта запускаем генерацию уже отмеченных фрагментов:
+    # В режиме экспорта используем только консоль:
     elif mode == 'export':
+
+        # Доуточняем параметры:
+        if source_file == '':
+            print('В режиме экспорта параметр source является обязательным!')
+            sys.exit(1)
+        preview_file = preview_file or source_file
+        fragments_dir = fragments_dir or os.path.dirname(source_file)
+
+        # Выполняем экспорт в консоли:
         backend = Backend(
             float('inf'),
             source_file,
