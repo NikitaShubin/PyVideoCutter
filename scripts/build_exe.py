@@ -20,7 +20,7 @@ def build_exe():
         '--console',
         '--icon=' + icon_path,
         '--add-data=' + os.path.join(base_dir, 'pyvideocutter', 'resources') + os.pathsep + 'resources',
-        '--add-binary=/usr/lib/x86_64-linux-gnu/libc.so.6:.',
+        #'--add-binary=/usr/lib/x86_64-linux-gnu/libc.so.6:.',
         '--strip',
     ]
 
