@@ -5,7 +5,7 @@ import copy
 import argparse
 import numpy as np
 import cv2
-import base64
+import ctypes
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout,
@@ -17,7 +17,7 @@ from PyQt5.QtCore import Qt, QTimer
 # Загружаем иконку приложения в base64 из другого файла:
 base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(base_dir))
-from pyvideocutter.icon import ICO_BASE64
+ico_file = os.path.join(base_dir, 'resources', 'icon.ico')
 
 
 class QtDialogHelper:
@@ -487,7 +487,7 @@ class MainWindow(QMainWindow):
         super().__init__()
 
         # Устанавливаем иконку приложения:
-        self.setWindowIcon(self.create_icon_from_base64(ICO_BASE64))
+        self.setWindowIcon(QIcon(ico_file))
 
         # Инициализация переменных состояния:
         self.show_statusbar = True
@@ -532,17 +532,6 @@ class MainWindow(QMainWindow):
 
         # Устанавливаем размер окна:
         self.resize(800, 600)
-
-    def create_icon_from_base64(self, base64_str):
-        """Создает иконку из base64 строки:"""
-        icon_data = base64.b64decode(ICO_BASE64)
-
-        # Создаем QPixmap из бинарных данных:
-        pixmap = QPixmap()
-        pixmap.loadFromData(icon_data)
-
-        # Создаем QIcon из QPixmap:
-        return QIcon(pixmap)
 
     def update_title(self):
         """Обновляет заголовок окна:"""
@@ -873,6 +862,7 @@ def get_args():
 
     args = parser.parse_args()
 
+    # Если задан режим экспорта (без GUI):
     if args.export:
         source_file = args.source
         if source_file == '':
@@ -880,7 +870,19 @@ def get_args():
         preview_file = args.preview or source_file
         fragments_dir = args.fragments_dir or os.path.dirname(source_file)
 
+    # Если задан обычный режим редактирования (без консоли):
     else:
+        # Скрываем окно консоли под Windows:
+        if len(sys.argv) == 1 and sys.platform == "win32":
+            kernel32 = ctypes.WinDLL('kernel32')
+            kernel32.FreeConsole()
+            '''
+            user32 = ctypes.WinDLL('user32')
+            hwnd = kernel32.GetConsoleWindow()
+            if hwnd:
+                user32.ShowWindow(hwnd, 0)  # 0 = SW_HIDE
+            '''
+
         # Используем QtDialogHelper для диалогов:
         source_file = args.source or QtDialogHelper.ask_open_file('Укажите исходный файл')
         preview_file = args.preview or QtDialogHelper.ask_open_file('Укажите файл-превью') or source_file
@@ -890,7 +892,7 @@ def get_args():
     return source_file, preview_file, fragments_dir, 'export' if args.export else 'edit'
 
 
-def main_app():
+def main():
     app = QApplication(sys.argv)
 
     # Получаем список параметров:
@@ -917,8 +919,4 @@ def main_app():
 
 
 if __name__ == '__main__':
-    main_app()
-
-
-def main():
-    main_app()
+    main()

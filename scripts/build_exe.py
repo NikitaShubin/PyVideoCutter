@@ -12,7 +12,7 @@ def build_exe():
         main_script,
         '--name=PyVideoCutter',
         '--onefile',
-        '--windowed',
+        '--console',
         '--icon=' + icon_path,
         '--add-data=' + os.path.join('pyvideocutter', 'resources') + os.pathsep + 'resources'
     ]
