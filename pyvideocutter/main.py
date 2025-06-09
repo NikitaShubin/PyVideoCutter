@@ -6,18 +6,22 @@ import argparse
 import numpy as np
 import ctypes
 
-# Исправляем пути к плагинам Qt:
-from PyQt5.QtCore import QLibraryInfo
-os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
-    QLibraryInfo.PluginsPath
-)
+try:
+    # Исправляем пути к плагинам Qt:
+    from PyQt5.QtCore import QLibraryInfo
+    os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QLibraryInfo.location(
+        QLibraryInfo.PluginsPath
+    )
 
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout,
-    QMessageBox, QFileDialog, QStatusBar, QProgressDialog
-)
-from PyQt5.QtGui import QImage, QPixmap, QKeyEvent, QIcon
-from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtWidgets import (
+        QApplication, QMainWindow, QLabel, QWidget, QVBoxLayout,
+        QMessageBox, QFileDialog, QStatusBar, QProgressDialog
+    )
+    from PyQt5.QtGui import QImage, QPixmap, QKeyEvent, QIcon
+    from PyQt5.QtCore import Qt, QTimer
+except ImportError:
+    print('PyQt5 не найден. Доступен только режим экспорта в консоли.')
+
 import cv2  # OpenCV должен импортироваться ПОСЛЕ PyQt5!
 
 # Загружаем иконку приложения в base64 из другого файла:
