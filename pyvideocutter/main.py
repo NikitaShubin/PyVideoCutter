@@ -5,6 +5,7 @@ import copy
 import argparse
 import numpy as np
 import ctypes
+import subprocess
 
 try:
     # Исправляем пути к плагинам Qt:
@@ -24,6 +25,18 @@ except ImportError:
 
 import cv2  # OpenCV должен импортироваться ПОСЛЕ PyQt5!
 
+
+# Проверка доступности FFmpeg:
+def check_ffmpeg():
+    try:
+        subprocess.run(["ffmpeg", "-version"],
+                      stdout=subprocess.DEVNULL,
+                      stderr=subprocess.DEVNULL)
+        return True
+    except FileNotFoundError:
+        return False
+
+
 # Загружаем иконку приложения в base64 из другого файла:
 base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(os.path.dirname(base_dir))
@@ -37,6 +50,7 @@ class QtDialogHelper:
     def msgbox(msg, title='Внимание', parent=None):
         msg_box = QMessageBox(parent)
         msg_box.setWindowTitle(title)
+        msg_box.setWindowIcon(QIcon(ico_file))
         msg_box.setText(msg)
         msg_box.setIcon(QMessageBox.Information)
         msg_box.exec_()
@@ -45,6 +59,7 @@ class QtDialogHelper:
     def errorbox(msg, title='Ошибка', parent=None):
         msg_box = QMessageBox(parent)
         msg_box.setWindowTitle(title)
+        msg_box.setWindowIcon(QIcon(ico_file))
         msg_box.setText(msg)
         msg_box.setIcon(QMessageBox.Critical)
         msg_box.exec_()
@@ -69,10 +84,22 @@ class QtDialogHelper:
     def ask_ok_cancel(question, title=None, parent=None):
         msg_box = QMessageBox(parent)
         msg_box.setWindowTitle(title or "Подтверждение")
+        msg_box.setWindowIcon(QIcon(ico_file))
         msg_box.setText(question)
         msg_box.setIcon(QMessageBox.Question)
         msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
         return msg_box.exec_() == QMessageBox.Ok
+
+    @staticmethod
+    def progress_bar(caption, cancel=None, title='', cur_val=0,
+                     max_val=None, parent=None):
+        progress = QProgressDialog(caption, cancel, cur_val, max_val, parent)
+        progress.setWindowTitle(title)
+        progress.setWindowIcon(QIcon(ico_file))
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setWindowFlags(progress.windowFlags() &
+                                ~Qt.WindowContextHelpButtonHint)
+        return progress
 
 
 class CircleInd:
@@ -124,11 +151,23 @@ class VideoReader:
         self.h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # Заполняем буфер кадрами:
+        # Инициируем буфер:
         self.buf_size = min(buf_size, self.total_frames)
         self.buffer = np.zeros((self.buf_size, self.h, self.w, 3), np.uint8)
+
+        # Инициируем прогресс-бар:
+        progress = QtDialogHelper.progress_bar("Загрузка видео...",
+                                               None, "Инициализация",
+                                               0, self.buf_size)
+
+        # Заполняем буфер кадрами:
         for frame_ind in range(self.buf_size):
             self.buffer[frame_ind, ...] = self.cap.read()[1]
+            progress.setValue(frame_ind + 1)
+            QApplication.processEvents()
+            if progress.wasCanceled():
+                break
+        progress.close()
 
         # Расставляем переменные адресации кадров в буфере:
         self.start = CircleInd(self.buf_size)
@@ -283,10 +322,11 @@ class Backend:
     def extract_fragments(self, parent=None):
 
         if parent:
-            progress = QProgressDialog("Обработка фрагментов...", "Отмена",
-                                       0, len(self.fragments), parent)
-            progress.setWindowTitle("Экспорт фрагментов")
-            progress.setWindowModality(Qt.WindowModal)
+            progress = QtDialogHelper.progress_bar(
+                "Обработка фрагментов...",
+                "Отмена", "Экспорт фрагментов",
+                0, len(self.fragments), parent
+            )
             progress.setMinimumDuration(0)
         else:
             print(f"Экспорт {len(self.fragments)} фрагментов:")
@@ -476,22 +516,22 @@ class MainWindow(QMainWindow):
     """Главное окно приложения с использованием PyQt5:"""
 
     # Горячие клавиши:
-    next_frame_keys = [Qt.Key_Right, Qt.Key_Period, Qt.Key_Greater]
-    prev_frame_keys = [Qt.Key_Left, Qt.Key_Comma, Qt.Key_Less]
-    pause_key = Qt.Key_Space
-    jump_keys = [Qt.Key_J]
-    start_fragment_keys = [Qt.Key_Up, Qt.Key_BracketLeft]
-    end_fragment_keys = [Qt.Key_Down, Qt.Key_BracketRight]
-    delete_keys = [Qt.Key_Delete, Qt.Key_D]
-    insert_fragment_edge_keys = [Qt.Key_K, Qt.Key_Insert, Qt.Key_F12]
-    undo_redo_keys = [Qt.Key_Z]
-    drop_fragment_edge_keys = [Qt.Key_Escape, Qt.Key_Q]
-    fit_to_window_keys = [Qt.Key_F]
-    reverse_play_keys = [Qt.Key_R]
-    show_statusbar_key = Qt.Key_Tab
-    export_fragments_keys = [Qt.Key_E, Qt.Key_P]
-    show_hotkeys_info_key = [Qt.Key_H, Qt.Key_F1]
-    speed_keys = list(range(Qt.Key_0, Qt.Key_9 + 1))
+    next_frame_keys = {Qt.Key_Right, Qt.Key_Period, Qt.Key_Greater}
+    prev_frame_keys = {Qt.Key_Left, Qt.Key_Comma, Qt.Key_Less}
+    pause_keys = {Qt.Key_Space}
+    jump_keys = {Qt.Key_J}
+    start_fragment_keys = {Qt.Key_Up, Qt.Key_BracketLeft}
+    end_fragment_keys = {Qt.Key_Down, Qt.Key_BracketRight}
+    delete_keys = {Qt.Key_Delete, Qt.Key_D}
+    insert_fragment_edge_keys = {Qt.Key_K, Qt.Key_Insert, Qt.Key_F12}
+    undo_redo_keys = {Qt.Key_Z}
+    drop_fragment_edge_keys = {Qt.Key_Escape, Qt.Key_Q}
+    fit_to_window_keys = {Qt.Key_F}
+    reverse_play_keys = {Qt.Key_R}
+    show_statusbar_keys = {Qt.Key_Tab}
+    export_fragments_keys = {Qt.Key_E, Qt.Key_P}
+    show_hotkeys_info_keys = {Qt.Key_H, Qt.Key_F1}
+    speed_keys = set(range(Qt.Key_0, Qt.Key_9 + 1))
 
     def __init__(self, source_file, preview_file, fragments_dir=None):
         super().__init__()
@@ -642,15 +682,17 @@ class MainWindow(QMainWindow):
     def keyPressEvent(self, event: QKeyEvent):
         """Обработка нажатий клавиш:"""
         key = event.key()
+        vkey = event.nativeVirtualKey()
+        keys = {key, vkey}
         modifiers = event.modifiers()
 
         # Переключение режима подгонки изображения:
-        if key in self.fit_to_window_keys:
+        if vkey in self.fit_to_window_keys:
             self.fit_to_window = not self.fit_to_window
             self.update_frame_directly()
 
         # Переключение направления воспроизведения:
-        if key in self.reverse_play_keys:
+        if keys & self.reverse_play_keys:
             self.play_direction *= -1
             self.jump_to = None
             direction = "назад" if self.play_direction == -1 else "вперед"
@@ -658,13 +700,13 @@ class MainWindow(QMainWindow):
             self.update_title()
 
         # Установка скорости воспроизведения:
-        if key in self.speed_keys:
+        if keys & self.speed_keys:
             n = key - Qt.Key_0
             self.speed = 2 ** n
             self.status_bar.showMessage(f"Скорость: {self.speed} кадров/шаг", 2000)
 
         # Переход на следующий кадр:
-        if key in self.next_frame_keys:
+        if keys & self.next_frame_keys:
             self.jump_to = None
             self.is_playing = False
             frame = self.video_reader.next()
@@ -672,7 +714,7 @@ class MainWindow(QMainWindow):
                 self.update_frame_directly(frame)
 
         # Возврат на предыдущий кадр:
-        elif key in self.prev_frame_keys:
+        elif keys & self.prev_frame_keys:
             self.jump_to = None
             self.is_playing = False
             frame = self.video_reader.prev()
@@ -680,11 +722,11 @@ class MainWindow(QMainWindow):
                 self.update_frame_directly(frame)
 
         # Пауза/воспроизведение:
-        elif key == self.pause_key:
+        elif keys & self.pause_keys:
             self.is_playing = not self.is_playing
 
         # Переход к ближайшему сегменту (в любом направлении):
-        elif key in self.jump_keys:
+        elif keys & self.jump_keys:
             position = self.video_reader.position
             key_frames = self.backend.get_all_key_frames()
 
@@ -714,25 +756,25 @@ class MainWindow(QMainWindow):
             self.is_playing = True
 
         # Начало сегмента:
-        elif key in self.start_fragment_keys:
+        elif keys & self.start_fragment_keys:
             position = self.video_reader.position
             self.backend.new_start(position)
             self.update_frame_directly()
 
         # Конец сегмента:
-        elif key in self.end_fragment_keys:
+        elif keys & self.end_fragment_keys:
             position = self.video_reader.position
             self.backend.new_end(position)
             self.update_frame_directly()
 
         # Удаление сегмента:
-        elif key in self.delete_keys:
+        elif keys & self.delete_keys:
             position = self.video_reader.position
             if self.backend.delete(position):
                 self.update_frame_directly()
 
         # Отмена действия (Ctrl+Z) или его повтор (Z):
-        elif key in self.undo_redo_keys:
+        elif keys & self.undo_redo_keys:
             if modifiers & Qt.ControlModifier:  # нажат ли Ctrl?
                 if self.backend.undo():
                     self.update_frame_directly()
@@ -741,16 +783,22 @@ class MainWindow(QMainWindow):
                     self.update_frame_directly()
 
         # Включение/выключение статусбара:
-        elif key == self.show_statusbar_key:
+        elif keys & self.show_statusbar_keys:
             self.show_statusbar = not self.show_statusbar
             self.update_frame_directly()
 
         # Экспорт фрагментов:
-        elif key in self.export_fragments_keys:
-            self.backend.extract_fragments(self)
+        elif keys & self.export_fragments_keys:
+            if check_ffmpeg():
+                self.backend.extract_fragments(self)
+            else:
+                QtDialogHelper.errorbox(
+                    'FFmpeg не найден! Установите FFmpeg'
+                    'и добавьте его в PATH.'
+                )
 
         # Показать/скрыть справку:
-        elif key in self.show_hotkeys_info_key:
+        elif keys & self.show_hotkeys_info_keys:
             self.show_hotkeys_info = not self.show_hotkeys_info
             QtDialogHelper.msgbox(
                 "Список горячих клавиш:\n"
@@ -775,7 +823,7 @@ class MainWindow(QMainWindow):
             )
 
         # Выход:
-        elif key in self.drop_fragment_edge_keys:
+        elif keys & self.drop_fragment_edge_keys:
             if QtDialogHelper.ask_ok_cancel(
                     "Вы уверены, что хотите выйти из программы?",
                     "Заверение работы",
@@ -784,7 +832,7 @@ class MainWindow(QMainWindow):
                 self.close()
 
         # Разрезание сегмента:
-        elif key in self.insert_fragment_edge_keys:
+        elif keys & self.insert_fragment_edge_keys:
             position = self.video_reader.position
             if self.key_pose is None:
                 for start, end in self.backend.fragments:
@@ -910,6 +958,10 @@ def main():
 
     # В режиме экспорта используем только консоль:
     elif mode == 'export':
+
+        if not check_ffmpeg():
+            print("FFmpeg не найден! Установите FFmpeg и добавьте его в PATH.")
+            sys.exti(1)
 
         # Доуточняем параметры:
         if source_file == '':
